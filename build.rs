@@ -4,6 +4,7 @@ fn main() {
     match target_os.as_str() {
         "macos" => println!("cargo:rustc-link-lib=framework=AppKit"),
         "windows" => {}
+        "android" => {}
         _ => {
             let gtk = std::env::var_os("CARGO_FEATURE_GTK3").is_some();
             let xdg = std::env::var_os("CARGO_FEATURE_XDG_PORTAL").is_some();

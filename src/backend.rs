@@ -34,6 +34,8 @@ mod macos;
 mod wasm;
 #[cfg(target_os = "windows")]
 mod win_cid;
+#[cfg(target_os = "android")]
+mod android;
 #[cfg(all(
     any(
         target_os = "linux",
