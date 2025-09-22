@@ -30,6 +30,8 @@ mod linux;
 mod gtk3;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "ios")]
+mod ios;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 #[cfg(target_os = "windows")]
