@@ -4,6 +4,7 @@
 //!   * Windows
 //!   * macOS
 //!   * Linux & BSDs (GTK3 or XDG Desktop Portal)
+//!   * iOS (via apple-utils; async preferred)
 //!   * WASM32 (async only)
 //!
 //! # Examples
@@ -102,16 +103,16 @@
 //! | ------------- |
 //! | 🚧             |
 //!
-//! | Feature      | Linux | Windows | MacOS     | Wasm32 |
-//! | ------------ | ----- | ------- | --------- | ------ |
-//! | SingleFile   | ✔     | ✔       | ✔         | ✔      |
-//! | MultipleFile | ✔     | ✔       | ✔         | ✔      |
-//! | PickFolder   | ✔     | ✔       | ✔         | ✖      |
-//! | SaveFile     | ✔     | ✔       | ✔         | ✖      |
-//! |              |       |         |           |        |
-//! | Filters      | ✔ ([GTK only](https://github.com/PolyMeilex/rfd/issues/42)) | ✔ | ✔ | ✔ |
-//! | StartingPath | ✔     | ✔       | ✔         | ✖      |
-//! | Async        | ✔     | ✔       | ✔         | ✔      |
+//! | Feature      | Linux | Windows | MacOS     | iOS | Wasm32 |
+//! | ------------ | ----- | ------- | --------- | --- | ------ |
+//! | SingleFile   | ✔     | ✔       | ✔         | ✔  | ✔      |
+//! | MultipleFile | ✔     | ✔       | ✔         | ✔  | ✔      |
+//! | PickFolder   | ✔     | ✔       | ✔         | ✔  | ✖      |
+//! | SaveFile     | ✔     | ✔       | ✔         | ✖  | ✖      |
+//! |              |       |         |           |    |        |
+//! | Filters      | ✔ ([GTK only](https://github.com/PolyMeilex/rfd/issues/42)) | ✔ | ✔ | ✔ | ✔ |
+//! | StartingPath | ✔     | ✔       | ✔         | ✔  | ✖      |
+//! | Async        | ✔     | ✔       | ✔         | ✔  | ✔      |
 //!
 //! # rfd-extras
 //!
