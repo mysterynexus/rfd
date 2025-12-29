@@ -1,7 +1,7 @@
 use crate::message_dialog::MessageDialogResult;
 use crate::FileHandle;
 use std::future::Future;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -28,6 +28,8 @@ mod linux;
     feature = "gtk3"
 ))]
 mod gtk3;
+#[cfg(target_os = "ios")]
+mod ios;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_arch = "wasm32")]
@@ -51,25 +53,26 @@ mod xdg_desktop_portal;
 //
 
 /// Dialog used to pick file/files
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub trait FilePickerDialogImpl {
     fn pick_file(self) -> Option<PathBuf>;
     fn pick_files(self) -> Option<Vec<PathBuf>>;
 }
 
 /// Dialog used to save file
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub trait FileSaveDialogImpl {
     fn save_file(self) -> Option<PathBuf>;
 }
 
 /// Dialog used to pick folder
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub trait FolderPickerDialogImpl {
     fn pick_folder(self) -> Option<PathBuf>;
     fn pick_folders(self) -> Option<Vec<PathBuf>>;
 }
 
+#[cfg(not(target_os = "ios"))]
 pub trait MessageDialogImpl {
     fn show(self) -> MessageDialogResult;
 }

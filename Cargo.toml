@@ -66,6 +66,37 @@ objc2-core-foundation = { version = "0.3.0", default-features = false, features 
   "CFUserNotification",
 ] }
 
+[target.'cfg(target_os = "ios")'.dependencies]
+block2 = "0.6.0"
+dispatch2 = "0.3.0"
+objc2 = "0.6.0"
+objc2-foundation = { version = "0.3.0", default-features = false, features = [
+  "std",
+  "NSArray",
+  "NSEnumerator",
+  "NSString",
+  "NSURL",
+] }
+objc2-ui-kit = { version = "0.3.0", default-features = false, features = [
+  "std",
+  "block2",
+  "UIDocumentPickerViewController",
+  "UIAlertController",
+  "UIAlert",
+  "UIResponder",
+  "UIViewController",
+  "UIView",
+  "UIWindow",
+  "UIApplication",
+  "UIScene",
+  "UIWindowScene",
+  "objc2-uniform-type-identifiers",
+] }
+objc2-uniform-type-identifiers = { version = "0.3.0", default-features = false, features = [
+  "std",
+  "UTType",
+] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
