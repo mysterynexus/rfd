@@ -107,10 +107,10 @@ impl FileDialog {
     }
 }
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios", target_os = "android")))]
 use crate::backend::{FilePickerDialogImpl, FileSaveDialogImpl, FolderPickerDialogImpl};
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios", target_os = "android")))]
 impl FileDialog {
     /// Pick one file
     pub fn pick_file(self) -> Option<PathBuf> {

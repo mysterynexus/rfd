@@ -141,3 +141,6 @@ mod message_dialog;
 pub use message_dialog::{
     AsyncMessageDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel,
 };
+
+#[cfg(target_os = "android")]
+pub use backend::android::sync_save_file;

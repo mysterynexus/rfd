@@ -1,5 +1,5 @@
 use crate::backend::AsyncMessageDialogImpl;
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use crate::backend::MessageDialogImpl;
 use std::fmt::{Display, Formatter};
 
@@ -77,7 +77,7 @@ impl MessageDialog {
     }
 
     /// Shows a message dialog and returns the button that was pressed.
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     pub fn show(self) -> MessageDialogResult {
         MessageDialogImpl::show(self)
     }
