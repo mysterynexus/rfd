@@ -21,17 +21,17 @@ wayland = ["wayland-backend", "wayland-client", "wayland-protocols"]
 common-controls-v6 = ["windows-sys/Win32_UI_Controls"]
 
 [dev-dependencies]
-futures = "0.3.12"
+futures = "0.3.34"
 
 [dependencies]
 raw-window-handle = "0.6"
 log = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-block2 = "0.6.0"
-dispatch2 = "0.3.0"
-objc2 = "0.6.0"
-objc2-foundation = { version = "0.3.0", default-features = false, features = [
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSArray",
   "NSEnumerator",
@@ -40,11 +40,11 @@ objc2-foundation = { version = "0.3.0", default-features = false, features = [
   "NSThread",
   "NSURL",
 ] }
-objc2-uniform-type-identifiers = { version = "0.3.0", default-features = false, features = [
+objc2-uniform-type-identifiers = { version = "0.3.2", default-features = false, features = [
   "std",
   "UTType",
 ] }
-objc2-app-kit = { version = "0.3.0", default-features = false, features = [
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std",
   "block2",
   "NSAlert",
@@ -62,7 +62,7 @@ objc2-app-kit = { version = "0.3.0", default-features = false, features = [
   "objc2-uniform-type-identifiers",
   "NSWindow",
 ] }
-objc2-core-foundation = { version = "0.3.0", default-features = false, features = [
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "CFBase",
   "CFDate",
@@ -72,21 +72,21 @@ objc2-core-foundation = { version = "0.3.0", default-features = false, features 
 ] }
 
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21"
+jni = "0.22"
 ndk-context = "0.1"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-block2 = "0.6.0"
-dispatch2 = "0.3.0"
-objc2 = "0.6.0"
-objc2-foundation = { version = "0.3.0", default-features = false, features = [
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSArray",
   "NSEnumerator",
   "NSString",
   "NSURL",
 ] }
-objc2-ui-kit = { version = "0.3.0", default-features = false, features = [
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
   "std",
   "block2",
   "UIDocumentPickerViewController",
@@ -101,7 +101,7 @@ objc2-ui-kit = { version = "0.3.0", default-features = false, features = [
   "UIWindowScene",
   "objc2-uniform-type-identifiers",
 ] }
-objc2-uniform-type-identifiers = { version = "0.3.0", default-features = false, features = [
+objc2-uniform-type-identifiers = { version = "0.3.2", default-features = false, features = [
   "std",
   "UTType",
 ] }
@@ -134,9 +134,9 @@ glib-sys = { version = "0.22.9", optional = true }
 gobject-sys = { version = "0.22.9", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen = "0.2.69"
-js-sys = "0.3.46"
-web-sys = { version = "0.3.46", features = [
+wasm-bindgen = "0.2.129"
+js-sys = "0.3.106"
+web-sys = { version = "0.3.106", features = [
   'Document',
   'Element',
   'HtmlInputElement',
@@ -152,7 +152,7 @@ web-sys = { version = "0.3.46", features = [
   'BlobPropertyBag',
   'Url',
 ] }
-wasm-bindgen-futures = "0.4.19"
+wasm-bindgen-futures = "0.4.79"
 
 [[example]]
 name = "simple"
