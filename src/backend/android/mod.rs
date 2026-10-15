@@ -8,7 +8,9 @@ use jni::sys::jlong;
 use jni::JNIEnv;
 use std::path::PathBuf;
 
-use utils::{complete_file_request, complete_message_request, init_helper_class, jstring_array_to_paths};
+use utils::{
+    complete_file_request, complete_message_request, init_helper_class, jstring_array_to_paths,
+};
 
 pub use utils::sync_save_file;
 

@@ -19,7 +19,7 @@ fn main() {
 
     let window = builder.build(&event_loop).unwrap();
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     {
         use winit::platform::web::WindowExtWebSys;
 
@@ -41,9 +41,9 @@ fn main() {
     event_loop
         .run(move |event, target| match event {
             event::Event::UserEvent(name) => {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(target_family = "wasm")]
                 alert(&name);
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(not(target_family = "wasm"))]
                 println!("{}", name);
             }
             event::Event::WindowEvent { event, .. } => match event {
@@ -140,6 +140,61 @@ fn main() {
                         event_loop_proxy.send_event(format!("Msg: {}", val)).ok();
                     });
                 }
+                #[cfg(target_os = "macos")]
+                WindowEvent::KeyboardInput {
+                    event:
+                        event::KeyEvent {
+                            state: event::ElementState::Pressed,
+                            physical_key: PhysicalKey::Code(KeyCode::KeyJ),
+                            ..
+                        },
+                    ..
+                } => {
+                    let dialog = rfd::AsyncFileDialog::new()
+                        .add_filter("midi", &["mid", "midi"])
+                        .add_filter("rust", &["rs", "toml"])
+                        .set_parent(&window)
+                        .pick_file_or_folder();
+
+                    let event_loop_proxy = event_loop_proxy.clone();
+                    executor.execut(async move {
+                        let files = dialog.await;
+
+                        // let names: Vec<String> = files.into_iter().map(|f| f.file_name()).collect();
+                        let names = files;
+
+                        event_loop_proxy.send_event(format!("{:#?}", names)).ok();
+                    });
+                }
+
+                #[cfg(target_os = "macos")]
+                WindowEvent::KeyboardInput {
+                    event:
+                        event::KeyEvent {
+                            state: event::ElementState::Pressed,
+                            physical_key: PhysicalKey::Code(KeyCode::KeyK),
+                            ..
+                        },
+                    ..
+                } => {
+                    let dialog = rfd::AsyncFileDialog::new()
+                        .add_filter("midi", &["mid", "midi"])
+                        .add_filter("rust", &["rs", "toml"])
+                        .set_parent(&window)
+                        .pick_files_or_folders();
+
+                    let event_loop_proxy = event_loop_proxy.clone();
+                    executor.execut(async move {
+                        let files = dialog.await;
+
+                        if let Some(files) = files {
+                            let names: Vec<String> =
+                                files.into_iter().map(|f| f.file_name()).collect();
+                            event_loop_proxy.send_event(format!("{:#?}", names)).ok();
+                        }
+                    });
+                }
+
                 _ => {}
             },
             _ => {}
@@ -150,23 +205,23 @@ fn main() {
 use std::future::Future;
 
 struct Executor {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(target_family = "wasm"))]
     pool: futures::executor::ThreadPool,
 }
 
 impl Executor {
     fn new() -> Self {
         Self {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(target_family = "wasm"))]
             pool: futures::executor::ThreadPool::new().unwrap(),
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(target_family = "wasm"))]
     fn execut<F: Future<Output = ()> + Send + 'static>(&self, f: F) {
         self.pool.spawn_ok(f);
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     fn execut<F: Future<Output = ()> + 'static>(&self, f: F) {
         wasm_bindgen_futures::spawn_local(f);
     }

@@ -27,7 +27,12 @@ impl<T> JniFuture<T> {
             waker: None,
             result: None,
         }));
-        (Self { state: state.clone() }, state)
+        (
+            Self {
+                state: state.clone(),
+            },
+            state,
+        )
     }
 }
 

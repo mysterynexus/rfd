@@ -10,7 +10,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 /// Synchronous Message Dialog. Supported platforms:
 ///  * Windows
 ///  * macOS
-///  * Linux (GTK only)
+///  * Linux
 ///  * WASM
 #[derive(Default, Debug, Clone)]
 pub struct MessageDialog {
@@ -70,7 +70,10 @@ impl MessageDialog {
     ///  * Windows
     ///  * Mac
     ///  * Linux (XDG only)
-    pub fn set_parent<W: HasWindowHandle + HasDisplayHandle>(mut self, parent: &W) -> Self {
+    pub fn set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(
+        mut self,
+        parent: &W,
+    ) -> Self {
         self.parent = parent.window_handle().ok().map(|x| x.as_raw());
         self.parent_display = parent.display_handle().ok().map(|x| x.as_raw());
         self
@@ -86,7 +89,7 @@ impl MessageDialog {
 /// Asynchronous Message Dialog. Supported platforms:
 ///  * Windows
 ///  * macOS
-///  * Linux (GTK only)
+///  * Linux
 ///  * WASM
 #[derive(Default, Debug, Clone)]
 pub struct AsyncMessageDialog(MessageDialog);
@@ -135,7 +138,10 @@ impl AsyncMessageDialog {
     ///  * Windows
     ///  * Mac
     ///  * Linux (XDG only)
-    pub fn set_parent<W: HasWindowHandle + HasDisplayHandle>(mut self, parent: &W) -> Self {
+    pub fn set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(
+        mut self,
+        parent: &W,
+    ) -> Self {
         self.0 = self.0.set_parent(parent);
         self
     }
@@ -146,21 +152,17 @@ impl AsyncMessageDialog {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum MessageLevel {
+    #[default]
     Info,
     Warning,
     Error,
 }
 
-impl Default for MessageLevel {
-    fn default() -> Self {
-        Self::Info
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum MessageButtons {
+    #[default]
     Ok,
     OkCancel,
     YesNo,
@@ -174,12 +176,6 @@ pub enum MessageButtons {
     /// Three customizable buttons.
     /// Notice that in Windows, this only works with the feature *common-controls-v6* enabled
     YesNoCancelCustom(String, String, String),
-}
-
-impl Default for MessageButtons {
-    fn default() -> Self {
-        Self::Ok
-    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

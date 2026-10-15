@@ -1,4 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 fn main() {
     let path = std::env::current_dir().unwrap();
 
@@ -6,12 +6,12 @@ fn main() {
         .add_filter("text", &["txt", "rs"])
         .add_filter("rust", &["rs", "toml"])
         .set_directory(&path)
-        .pick_files();
+        .pick_file();
 
     println!("The user choose: {:#?}", res);
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 fn main() {
     // On wasm only async dialogs are possible
 }

@@ -59,7 +59,7 @@ impl<'a> WasmDialog<'a> {
             let title_el: HtmlElement = document.create_element("div").unwrap().dyn_into().unwrap();
 
             title_el.set_id("rfd-title");
-            title_el.set_inner_html(title);
+            title_el.set_text_content(Some(title));
 
             card.append_child(&title_el).unwrap();
             title_el
@@ -125,7 +125,7 @@ impl<'a> WasmDialog<'a> {
         };
 
         let style = document.create_element("style").unwrap();
-        style.set_inner_html(include_str!("./wasm/style.css"));
+        style.set_text_content(Some(include_str!("./wasm/style.css")));
         overlay.append_child(&style).unwrap();
 
         Self {
@@ -148,7 +148,6 @@ impl<'a> WasmDialog<'a> {
         let overlay = self.overlay.clone();
         let ok_button = self.ok_button.clone();
         let cancel_button = self.cancel_button.clone();
-        let io = self.io.clone();
 
         let promise = match &self.io {
             HtmlIoElement::Input(input) => js_sys::Promise::new(&mut move |res, rej| {
@@ -164,24 +163,42 @@ impl<'a> WasmDialog<'a> {
                     move || {
                         rej.call0(&JsValue::undefined()).unwrap();
                         input.set_value("");
-                        body_for_cancel.remove_child(&overlay_for_cancel).unwrap();
+                        let _ = body_for_cancel.remove_child(&overlay_for_cancel);
                     }
                 }) as Box<dyn FnMut()>);
 
                 ok_button.set_onclick(Some(resolve_promise.as_ref().unchecked_ref()));
                 cancel_button.set_onclick(Some(reject_promise.as_ref().unchecked_ref()));
 
+                body.append_child(&overlay).ok();
+
+                input
+                    .add_event_listener_with_callback(
+                        "change",
+                        resolve_promise.as_ref().unchecked_ref(),
+                    )
+                    .unwrap();
+
+                input
+                    .add_event_listener_with_callback(
+                        "cancel",
+                        reject_promise.as_ref().unchecked_ref(),
+                    )
+                    .unwrap();
+
+                if window.navigator().user_activation().is_active() {
+                    // Browsers require transient user activation to open the file picker from JS.
+                    // If we have it, we can click the input to immediately show the file picker
+                    // instead of showing the popup.
+
+                    overlay.set_class_name("hidden");
+
+                    // click on the input element to open the file picker
+                    input.click();
+                }
+
                 resolve_promise.forget();
                 reject_promise.forget();
-
-                body.append_child(&overlay).ok();
-                match &io {
-                    HtmlIoElement::Input(input) => {
-                        // click on the input element to open the file picker
-                        input.click();
-                    }
-                    HtmlIoElement::Output { .. } => {}
-                }
             }),
             HtmlIoElement::Output {
                 element,
@@ -199,8 +216,8 @@ impl<'a> WasmDialog<'a> {
                     }) as Box<dyn FnMut()>);
 
                     let reject_promise = Closure::wrap(Box::new(move || {
-                            rej.call1(&JsValue::undefined(), &JsValue::from(true))
-                                .unwrap();
+                        rej.call1(&JsValue::undefined(), &JsValue::from(true))
+                            .unwrap();
                     }) as Box<dyn FnMut()>);
 
                     // Resolve the promise once the user clicks the download link or the button.

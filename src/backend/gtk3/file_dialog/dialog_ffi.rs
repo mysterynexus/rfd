@@ -6,7 +6,6 @@ use std::{
     ffi::{CStr, CString},
     ops::Deref,
     path::{Path, PathBuf},
-    ptr,
 };
 
 #[repr(i32)]
@@ -22,13 +21,13 @@ pub struct GtkFileDialog {
 }
 
 impl GtkFileDialog {
-    fn new(title: &str, action: GtkFileChooserAction) -> Self {
+    fn new(title: &str, action: GtkFileChooserAction, parent: *mut gtk_sys::GtkWindow) -> Self {
         let title = CString::new(title).unwrap();
 
         let ptr = unsafe {
             let dialog = gtk_sys::gtk_file_chooser_native_new(
                 title.as_ptr(),
-                ptr::null_mut(),
+                parent,
                 action as i32,
                 // passing null for the texts will use the default text, which has full support for i18n
                 std::ptr::null(),
@@ -96,6 +95,14 @@ impl GtkFileDialog {
         }
     }
 
+    fn set_show_hidden(&self, show: Option<bool>) {
+        if let Some(show) = show {
+            unsafe {
+                gtk_sys::gtk_file_chooser_set_show_hidden(self.ptr as _, show as i32);
+            }
+        }
+    }
+
     pub fn get_result(&self) -> Option<PathBuf> {
         let cstr = unsafe {
             let chosen_filename = gtk_sys::gtk_file_chooser_get_filename(self.ptr as _);
@@ -153,15 +160,25 @@ impl GtkFileDialog {
     }
 }
 
+fn parent_gtk_window(opt: &FileDialog) -> *mut gtk_sys::GtkWindow {
+    if let Some(parent_handle) = &opt.parent {
+        unsafe { super::super::utils::find_gtk_window(parent_handle) }
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
 impl GtkFileDialog {
     pub fn build_pick_file(opt: &FileDialog) -> Self {
         let mut dialog = GtkFileDialog::new(
             opt.title.as_deref().unwrap_or("Open File"),
             GtkFileChooserAction::Open,
+            parent_gtk_window(opt),
         );
 
         dialog.add_filters(&opt.filters);
         dialog.set_path(opt.starting_directory.as_deref());
+        dialog.set_show_hidden(opt.show_hidden_files);
 
         if let (Some(mut path), Some(file_name)) =
             (opt.starting_directory.to_owned(), opt.file_name.as_deref())
@@ -179,12 +196,14 @@ impl GtkFileDialog {
         let mut dialog = GtkFileDialog::new(
             opt.title.as_deref().unwrap_or("Save File"),
             GtkFileChooserAction::Save,
+            parent_gtk_window(opt),
         );
 
         unsafe { gtk_sys::gtk_file_chooser_set_do_overwrite_confirmation(dialog.ptr as _, 1) };
 
         dialog.add_filters(&opt.filters);
         dialog.set_path(opt.starting_directory.as_deref());
+        dialog.set_show_hidden(opt.show_hidden_files);
 
         if let (Some(mut path), Some(file_name)) =
             (opt.starting_directory.to_owned(), opt.file_name.as_deref())
@@ -209,8 +228,10 @@ impl GtkFileDialog {
         let dialog = GtkFileDialog::new(
             opt.title.as_deref().unwrap_or("Select Folder"),
             GtkFileChooserAction::SelectFolder,
+            parent_gtk_window(opt),
         );
         dialog.set_path(opt.starting_directory.as_deref());
+        dialog.set_show_hidden(opt.show_hidden_files);
 
         if let (Some(mut path), Some(file_name)) =
             (opt.starting_directory.to_owned(), opt.file_name.as_deref())
@@ -228,9 +249,11 @@ impl GtkFileDialog {
         let dialog = GtkFileDialog::new(
             opt.title.as_deref().unwrap_or("Select Folder"),
             GtkFileChooserAction::SelectFolder,
+            parent_gtk_window(opt),
         );
         unsafe { gtk_sys::gtk_file_chooser_set_select_multiple(dialog.ptr as _, 1) };
         dialog.set_path(opt.starting_directory.as_deref());
+        dialog.set_show_hidden(opt.show_hidden_files);
 
         if let (Some(mut path), Some(file_name)) =
             (opt.starting_directory.to_owned(), opt.file_name.as_deref())
@@ -248,11 +271,13 @@ impl GtkFileDialog {
         let mut dialog = GtkFileDialog::new(
             opt.title.as_deref().unwrap_or("Open File"),
             GtkFileChooserAction::Open,
+            parent_gtk_window(opt),
         );
 
         unsafe { gtk_sys::gtk_file_chooser_set_select_multiple(dialog.ptr as _, 1) };
         dialog.add_filters(&opt.filters);
         dialog.set_path(opt.starting_directory.as_deref());
+        dialog.set_show_hidden(opt.show_hidden_files);
 
         if let (Some(mut path), Some(file_name)) =
             (opt.starting_directory.to_owned(), opt.file_name.as_deref())

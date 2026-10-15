@@ -10,7 +10,14 @@ impl AsyncMessageDialogImpl for MessageDialog {
         let request_id = register_message_request(state.clone(), self.buttons.clone());
         let launched = with_jni_helper(false, |env, helper| {
             let button_spec = buttons_to_spec(&self.buttons);
-            call_show_message(env, helper, request_id, &self.title, &self.description, &button_spec)?;
+            call_show_message(
+                env,
+                helper,
+                request_id,
+                &self.title,
+                &self.description,
+                &button_spec,
+            )?;
             Ok(true)
         });
         if !launched {

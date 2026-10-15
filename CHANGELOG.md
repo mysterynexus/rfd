@@ -2,10 +2,46 @@
 
 ## Unreleased
 
+- MSRV is now 1.92
+- Fix macOS file dialogs ignoring `set_directory` when `set_file_name` is also used.
+- Add `FileDialog::set_show_hidden_files` and `AsyncFileDialog::set_show_hidden_files` to control hidden file visibility. Supported on macOS, Windows, and Linux (GTK3).
+- Honor `FileDialog::set_directory` and `AsyncFileDialog::set_directory` when using the zenity fallback backend on Linux.
+- Fix `liblary` typo in docs
+- Change wasm title to sanitize text contents via `title_el.set_text_content()` rather than `title_el.set_inner_html()`.
+- Set wasm dialog styles via `set_text_content()` rather than `set_inner_html()`, so rfd no longer uses `innerHTML`.
+
+## 0.17.2
+
+- Lower MSRV back to 1.88 by @PolyMeilex in https://github.com/PolyMeilex/rfd/pull/303
+
+## 0.17.1
+
+- Fix aarch64 compile error and add CI by @oscargus in https://github.com/PolyMeilex/rfd/pull/294
+- docs: Fixup docs post libdbus port by @PolyMeilex in https://github.com/PolyMeilex/rfd/pull/298
+- xdg_porta: Url decode the path by @PolyMeilex in https://github.com/PolyMeilex/rfd/pull/297
+
+## 0.17.0
+
+- `tokio` and `async-std` features removed
+
+## 0.16.0
+
 - Fix regressions on Wayland due to `ashpd` upgrade (#255).
 - The `pick_file()` method of file dialog targeted WASM now can return `None` correctly when cancelled (#258)
 - Update `windows-sys` to 0.60.
 - Make `ashpd` Wayland APIs optional. These are now gated behind the `wayland` feature, which is enabled by default.
+
+### Changed items in the public API
+```diff
+-pub fn AsyncFileDialog::set_parent<W: HasWindowHandle + HasDisplayHandle>(self, parent: &W) -> Self
++pub fn AsyncFileDialog::set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(self, parent: &W) -> Self
+-pub fn AsyncMessageDialog::set_parent<W: HasWindowHandle + HasDisplayHandle>(self, parent: &W) -> Self
++pub fn MessageDialog::set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(self, parent: &W) -> Self
+-pub fn FileDialog::set_parent<W: HasWindowHandle + HasDisplayHandle>(self, parent: &W) -> Self
++pub fn rfd::FileDialog::set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(self, parent: &W) -> Self
+-pub fn MessageDialog::set_parent<W: HasWindowHandle + HasDisplayHandle>(self, parent: &W) -> Self
++pub fn MessageDialog::set_parent<W: HasWindowHandle + HasDisplayHandle + ?Sized>(self, parent: &W) -> Self
+```
 
 ## 0.15.3
 

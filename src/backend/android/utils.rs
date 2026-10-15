@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use jni::objects::{GlobalRef, JClass, JObject, JObjectArray, JString, JValue};
@@ -37,8 +37,12 @@ where
     F: FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>,
 {
     let Some(vm) = get_vm() else { return default };
-    let Ok(mut env) = vm.attach_current_thread() else { return default };
-    let Ok(helper) = get_rfd_helper(&mut env) else { return default };
+    let Ok(mut env) = vm.attach_current_thread() else {
+        return default;
+    };
+    let Ok(helper) = get_rfd_helper(&mut env) else {
+        return default;
+    };
     f(&mut env, &helper).unwrap_or(default)
 }
 
@@ -110,9 +114,7 @@ fn result_from_code(code: i32, buttons: &MessageButtons) -> MessageDialogResult 
         c if c >= RESULT_CUSTOM_BASE => {
             let idx = (c - RESULT_CUSTOM_BASE) as usize;
             match buttons {
-                MessageButtons::OkCustom(ok) if idx == 0 => {
-                    MessageDialogResult::Custom(ok.clone())
-                }
+                MessageButtons::OkCustom(ok) if idx == 0 => MessageDialogResult::Custom(ok.clone()),
                 MessageButtons::OkCancelCustom(ok, cancel) => match idx {
                     0 => MessageDialogResult::Custom(ok.clone()),
                     1 => MessageDialogResult::Custom(cancel.clone()),
@@ -137,11 +139,18 @@ pub fn buttons_to_spec(buttons: &MessageButtons) -> Vec<(&str, i32)> {
         MessageButtons::OkCancel => vec![("OK", RESULT_OK), ("Cancel", RESULT_CANCEL)],
         MessageButtons::YesNo => vec![("Yes", RESULT_YES), ("No", RESULT_NO)],
         MessageButtons::YesNoCancel => {
-            vec![("Yes", RESULT_YES), ("No", RESULT_NO), ("Cancel", RESULT_CANCEL)]
+            vec![
+                ("Yes", RESULT_YES),
+                ("No", RESULT_NO),
+                ("Cancel", RESULT_CANCEL),
+            ]
         }
         MessageButtons::OkCustom(ok) => vec![(ok.as_str(), RESULT_CUSTOM_BASE)],
         MessageButtons::OkCancelCustom(ok, cancel) => {
-            vec![(ok.as_str(), RESULT_CUSTOM_BASE), (cancel.as_str(), RESULT_CUSTOM_BASE + 1)]
+            vec![
+                (ok.as_str(), RESULT_CUSTOM_BASE),
+                (cancel.as_str(), RESULT_CUSTOM_BASE + 1),
+            ]
         }
         MessageButtons::YesNoCancelCustom(yes, no, cancel) => vec![
             (yes.as_str(), RESULT_CUSTOM_BASE),
@@ -323,7 +332,9 @@ pub fn call_show_message(
 }
 
 pub fn get_rfd_helper<'a>(env: &mut JNIEnv<'a>) -> Result<JObject<'a>, jni::errors::Error> {
-    let helper_class_ref = HELPER_CLASS.get().ok_or(jni::errors::Error::NullPtr("RfdHelper class not initialized"))?;
+    let helper_class_ref = HELPER_CLASS.get().ok_or(jni::errors::Error::NullPtr(
+        "RfdHelper class not initialized",
+    ))?;
     let helper_class = unsafe { JClass::from_raw(helper_class_ref.as_obj().as_raw()) };
     let helper = env.call_static_method(helper_class, "getInstance", "()Lrfd/RfdHelper;", &[])?;
     helper.l()
@@ -351,11 +362,17 @@ pub fn jstring_array_to_paths(env: &mut JNIEnv, arr: &JObjectArray) -> Option<Ve
 
 pub fn sync_save_file(path: &std::path::Path) -> bool {
     let Some(vm) = get_vm() else { return false };
-    let Ok(mut env) = vm.attach_current_thread() else { return false };
-    let Some(helper_class_ref) = HELPER_CLASS.get() else { return false };
+    let Ok(mut env) = vm.attach_current_thread() else {
+        return false;
+    };
+    let Some(helper_class_ref) = HELPER_CLASS.get() else {
+        return false;
+    };
     let helper_class = unsafe { JClass::from_raw(helper_class_ref.as_obj().as_raw()) };
     let path_str = path.to_string_lossy();
-    let Ok(jpath) = env.new_string(path_str.as_ref()) else { return false };
+    let Ok(jpath) = env.new_string(path_str.as_ref()) else {
+        return false;
+    };
     let result = env.call_static_method(
         helper_class,
         "syncSaveFile",

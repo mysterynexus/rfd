@@ -4,9 +4,14 @@ use std::path::PathBuf;
 
 use block2::Block;
 use objc2::rc::Retained;
-use objc2::MainThreadMarker;
-use objc2_app_kit::{NSModalResponse, NSOpenPanel, NSSavePanel, NSWindow, NSWindowLevel};
-use objc2_foundation::{NSArray, NSString, NSURL};
+use objc2::runtime::{NSObject, NSObjectProtocol};
+use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2_app_kit::{
+    NSAutoresizingMaskOptions, NSModalResponse, NSOpenPanel, NSPopUpButton, NSSavePanel,
+    NSTextField, NSView, NSWindow, NSWindowLevel,
+};
+use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString, NSURL};
+use objc2_uniform_type_identifiers::UTType;
 use raw_window_handle::RawWindowHandle;
 
 use super::super::{
@@ -14,6 +19,7 @@ use super::super::{
     utils::{FocusManager, PolicyManager},
 };
 use crate::backend::macos::utils::window_from_raw_window_handle;
+use crate::file_dialog::Filter;
 use crate::FileDialog;
 
 extern "C" {
@@ -26,6 +32,9 @@ pub struct Panel {
     parent: Option<Retained<NSWindow>>,
     _focus_manager: FocusManager,
     _policy_manager: PolicyManager,
+    // NSControl.target is an unretained (assign) reference, so this is the
+    // only thing keeping the save panel's format-picker handler alive.
+    _save_panel_handler: Option<Retained<SavePanelHandler>>,
 }
 
 impl AsModal for Panel {
@@ -60,6 +69,7 @@ impl Panel {
             parent: parent.map(window_from_raw_window_handle),
             _focus_manager,
             _policy_manager,
+            _save_panel_handler: None,
         }
     }
 
@@ -97,11 +107,29 @@ impl Panel {
     }
 }
 
+fn utype_for_extension(ext: &str) -> Option<Retained<UTType>> {
+    unsafe { UTType::typeWithFilenameExtension(&NSString::from_str(ext)) }
+}
+
+fn utypes_for_filter(filter: &Filter) -> Retained<NSArray<UTType>> {
+    let types: Vec<_> = filter
+        .extensions
+        .iter()
+        .filter_map(|ext| utype_for_extension(ext))
+        .collect();
+
+    NSArray::from_retained_slice(&types)
+}
+
 trait PanelExt {
     fn panel(&self) -> &NSSavePanel;
 
     fn set_can_create_directories(&self, can: bool) {
         unsafe { self.panel().setCanCreateDirectories(can) }
+    }
+
+    fn set_shows_hidden_files(&self, show: bool) {
+        unsafe { self.panel().setShowsHiddenFiles(show) }
     }
 
     fn add_filters(&self, opt: &FileDialog) {
@@ -120,17 +148,9 @@ trait PanelExt {
         }
     }
 
-    fn set_path(&self, path: &Path, file_name: Option<&str>) {
-        // if file_name is some, and path is a dir
-        let path = if let (Some(name), true) = (file_name, path.is_dir()) {
-            let mut path = path.to_owned();
-            // add a name to the end of path
-            path.push(name);
-            path
-        } else {
-            path.to_owned()
-        };
-
+    fn set_path(&self, path: &Path) {
+        // directoryURL must point at a directory; a starting file name is
+        // applied separately through `setNameFieldStringValue`.
         if let Some(path) = path.to_str() {
             unsafe {
                 let url = NSURL::fileURLWithPath_isDirectory(&NSString::from_str(path), true);
@@ -163,6 +183,112 @@ impl PanelExt for Retained<NSOpenPanel> {
     }
 }
 
+struct FormatOption {
+    types: Retained<NSArray<UTType>>,
+}
+
+struct SavePanelHandlerIvars {
+    panel: Retained<NSSavePanel>,
+    options: Vec<FormatOption>,
+}
+
+define_class!(
+    #[unsafe(super = NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = SavePanelHandlerIvars]
+    struct SavePanelHandler;
+
+    unsafe impl NSObjectProtocol for SavePanelHandler {}
+
+    impl SavePanelHandler {
+        #[unsafe(method(formatChanged:))]
+        fn format_changed(&self, sender: &NSPopUpButton) {
+            let idx = unsafe { sender.indexOfSelectedItem() };
+            if idx < 0 {
+                return;
+            }
+
+            if let Some(option) = self.ivars().options.get(idx as usize) {
+                unsafe { self.ivars().panel.setAllowedContentTypes(&option.types) };
+            }
+        }
+    }
+);
+
+impl SavePanelHandler {
+    fn new(
+        mtm: MainThreadMarker,
+        panel: Retained<NSSavePanel>,
+        options: Vec<FormatOption>,
+    ) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(SavePanelHandlerIvars { panel, options });
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+fn build_format_accessory_view(
+    mtm: MainThreadMarker,
+    filters: &[Filter],
+    label_text: &str,
+) -> (Retained<NSView>, Retained<NSPopUpButton>) {
+    // NSSavePanel doesn't add its own padding around the accessory view, so the
+    // view's height needs enough slack above/below the controls (once centered)
+    // to avoid feeling cramped against the file list and the button row.
+    let view_height = 44.0;
+    let popup_width = 220.0;
+    let popup_height = 25.0;
+
+    // `labelWithString` already sizes the field to fit, but `sizeToFit` makes that
+    // explicit and lets us read back the real (font-metric-based) size below,
+    // rather than guessing a pixel width from the string's byte length.
+    let label = unsafe { NSTextField::labelWithString(&NSString::from_str(label_text), mtm) };
+    unsafe { label.sizeToFit() };
+    let label_size = label.frame().size;
+
+    let popup_x = label_size.width + 5.0;
+
+    let view = unsafe {
+        NSView::initWithFrame(
+            NSView::alloc(mtm),
+            NSRect::new(
+                NSPoint::new(0.0, 0.0),
+                NSSize::new(popup_x + popup_width, view_height),
+            ),
+        )
+    };
+    // Keeps the row centered (rather than pinned to its initial absolute position)
+    // if the user resizes the save panel, without stretching it: `ViewWidthSizable`
+    // would make NSSavePanel drop the standard margin it gives a fixed-size
+    // accessory view, jamming the row against the panel's left edge.
+    unsafe {
+        view.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewMinXMargin | NSAutoresizingMaskOptions::ViewMaxXMargin,
+        )
+    };
+
+    unsafe {
+        label.setFrameOrigin(NSPoint::new(0.0, (view_height - label_size.height) / 2.0));
+    }
+
+    let popup = unsafe { NSPopUpButton::new(mtm) };
+    unsafe {
+        popup.setFrame(NSRect::new(
+            NSPoint::new(popup_x, (view_height - popup_height) / 2.0),
+            NSSize::new(popup_width, popup_height),
+        ))
+    };
+    for filter in filters {
+        unsafe { popup.addItemWithTitle(&NSString::from_str(&filter.name)) };
+    }
+
+    unsafe {
+        view.addSubview(&label);
+        view.addSubview(&popup);
+    }
+
+    (view, popup)
+}
+
 impl Panel {
     pub fn build_pick_file(opt: &FileDialog, mtm: MainThreadMarker) -> Self {
         let panel = unsafe { NSOpenPanel::openPanel(mtm) };
@@ -172,7 +298,7 @@ impl Panel {
         }
 
         if let Some(path) = &opt.starting_directory {
-            panel.set_path(path, opt.file_name.as_deref());
+            panel.set_path(path);
         }
 
         if let Some(file_name) = &opt.file_name {
@@ -185,6 +311,10 @@ impl Panel {
 
         if let Some(can) = opt.can_create_directories {
             panel.set_can_create_directories(can);
+        }
+
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
         }
 
         unsafe { panel.setCanChooseDirectories(false) };
@@ -196,12 +326,42 @@ impl Panel {
     pub fn build_save_file(opt: &FileDialog, mtm: MainThreadMarker) -> Self {
         let panel = unsafe { NSSavePanel::savePanel(mtm) };
 
-        if !opt.filters.is_empty() {
-            panel.add_filters(opt);
-        }
+        let save_panel_handler = match opt.filters.as_slice() {
+            [] => None,
+            [single] => {
+                unsafe { panel.setAllowedContentTypes(&utypes_for_filter(single)) };
+                None
+            }
+            multiple => {
+                let label_text = opt.format_label.as_deref().unwrap_or("Format:");
+                let (view, popup) = build_format_accessory_view(mtm, multiple, label_text);
+
+                let options = multiple
+                    .iter()
+                    .map(|filter| FormatOption {
+                        types: utypes_for_filter(filter),
+                    })
+                    .collect();
+
+                let handler = SavePanelHandler::new(mtm, panel.clone(), options);
+
+                unsafe {
+                    popup.setTarget(Some(&handler));
+                    popup.setAction(Some(sel!(formatChanged:)));
+                }
+
+                unsafe {
+                    panel.setAllowedContentTypes(&utypes_for_filter(&multiple[0]));
+                    popup.selectItemAtIndex(0);
+                    panel.setAccessoryView(Some(&view));
+                }
+
+                Some(handler)
+            }
+        };
 
         if let Some(path) = &opt.starting_directory {
-            panel.set_path(path, opt.file_name.as_deref());
+            panel.set_path(path);
         }
 
         if let Some(file_name) = &opt.file_name {
@@ -216,14 +376,20 @@ impl Panel {
             panel.set_can_create_directories(can);
         }
 
-        Self::new(panel, opt.parent.as_ref())
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
+
+        let mut result = Self::new(panel, opt.parent.as_ref());
+        result._save_panel_handler = save_panel_handler;
+        result
     }
 
     pub fn build_pick_folder(opt: &FileDialog, mtm: MainThreadMarker) -> Self {
         let panel = unsafe { NSOpenPanel::openPanel(mtm) };
 
         if let Some(path) = &opt.starting_directory {
-            panel.set_path(path, opt.file_name.as_deref());
+            panel.set_path(path);
         }
 
         if let Some(title) = &opt.title {
@@ -232,6 +398,10 @@ impl Panel {
 
         let can = opt.can_create_directories.unwrap_or(true);
         panel.set_can_create_directories(can);
+
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
 
         unsafe { panel.setCanChooseDirectories(true) };
         unsafe { panel.setCanChooseFiles(false) };
@@ -243,7 +413,7 @@ impl Panel {
         let panel = unsafe { NSOpenPanel::openPanel(mtm) };
 
         if let Some(path) = &opt.starting_directory {
-            panel.set_path(path, opt.file_name.as_deref());
+            panel.set_path(path);
         }
 
         if let Some(title) = &opt.title {
@@ -252,6 +422,10 @@ impl Panel {
 
         let can = opt.can_create_directories.unwrap_or(true);
         panel.set_can_create_directories(can);
+
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
 
         unsafe { panel.setCanChooseDirectories(true) };
         unsafe { panel.setCanChooseFiles(false) };
@@ -268,7 +442,7 @@ impl Panel {
         }
 
         if let Some(path) = &opt.starting_directory {
-            panel.set_path(path, opt.file_name.as_deref());
+            panel.set_path(path);
         }
 
         if let Some(title) = &opt.title {
@@ -279,7 +453,69 @@ impl Panel {
             panel.set_can_create_directories(can);
         }
 
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
+
         unsafe { panel.setCanChooseDirectories(false) };
+        unsafe { panel.setCanChooseFiles(true) };
+        unsafe { panel.setAllowsMultipleSelection(true) };
+
+        Self::new(Retained::into_super(panel), opt.parent.as_ref())
+    }
+
+    pub fn build_pick_file_or_folder(opt: &FileDialog, mtm: MainThreadMarker) -> Self {
+        let panel = unsafe { NSOpenPanel::openPanel(mtm) };
+
+        if !opt.filters.is_empty() {
+            panel.add_filters(opt);
+        }
+
+        if let Some(path) = &opt.starting_directory {
+            panel.set_path(path);
+        }
+
+        if let Some(title) = &opt.title {
+            panel.set_title(title);
+        }
+
+        let can = opt.can_create_directories.unwrap_or(true);
+        panel.set_can_create_directories(can);
+
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
+
+        unsafe { panel.setCanChooseDirectories(true) };
+        unsafe { panel.setCanChooseFiles(true) };
+        unsafe { panel.setAllowsMultipleSelection(false) };
+
+        Self::new(Retained::into_super(panel), opt.parent.as_ref())
+    }
+
+    pub fn build_pick_files_or_folders(opt: &FileDialog, mtm: MainThreadMarker) -> Self {
+        let panel = unsafe { NSOpenPanel::openPanel(mtm) };
+
+        if !opt.filters.is_empty() {
+            panel.add_filters(opt);
+        }
+
+        if let Some(path) = &opt.starting_directory {
+            panel.set_path(path);
+        }
+
+        if let Some(title) = &opt.title {
+            panel.set_title(title);
+        }
+
+        let can = opt.can_create_directories.unwrap_or(true);
+        panel.set_can_create_directories(can);
+
+        if let Some(show) = opt.show_hidden_files {
+            panel.set_shows_hidden_files(show);
+        }
+
+        unsafe { panel.setCanChooseDirectories(true) };
         unsafe { panel.setCanChooseFiles(true) };
         unsafe { panel.setAllowsMultipleSelection(true) };
 

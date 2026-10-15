@@ -39,8 +39,7 @@
 //!
 //! On Linux & BSDs, two backends are available, one using the [GTK3 Rust bindings](https://gtk-rs.org/)
 //! and the other using the [XDG Desktop Portal](https://github.com/flatpak/xdg-desktop-portal)
-//! D-Bus API through [ashpd](https://github.com/bilelmoussaoui/ashpd) &
-//! [zbus](https://gitlab.freedesktop.org/dbus/zbus/).
+//! D-Bus API through `libdbus` or [zenity](https://gitlab.gnome.org/GNOME/zenity).
 //!
 //! ## GTK backend
 //! The GTK backend is used when the `xdg-portal` feature is disabled with the [`default-features = false`](https://doc.rust-lang.org/cargo/reference/features.html#dependency-features), and `gtk3` is enabled instead. The GTK3
@@ -54,21 +53,28 @@
 //! | Debian & Ubuntu | apt install libgtk-3-dev |
 //!
 //! ## XDG Desktop Portal backend
-//! The XDG Desktop Portal backend is used with the `xdg-portal` Cargo feature which is enabled by default. Either the `tokio` or `async-std` feature must be enabled. This backend will use either the GTK or KDE file dialog depending on the desktop environment
-//! in use at runtime. It does not have any non-Rust
-//! build dependencies, however it requires the user to have either the
+//! The XDG Desktop Portal backend is used with the `xdg-portal` Cargo feature which is enabled by default. This backend will use either the GTK or KDE file dialog depending on the desktop environment
+//! in use at runtime.
+//!
+//! It requires the user to have `libdbus` system library (should be available on any systemd
+//! distro), if the library is not found `zenity` will be used instead.
+//!
+//! It requires the user to also have either the
 //! [GTK](https://github.com/flatpak/xdg-desktop-portal-gtk),
 //! [GNOME](https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome), or
 //! [KDE](https://invent.kde.org/plasma/xdg-desktop-portal-kde/) XDG Desktop Portal backend installed
 //! at runtime. These are typically installed by the distribution together with the desktop environment.
-//! If you are packaging an application that uses RFD, ensure either one of these is installed
-//! with the package. The
+//!
+//! The
 //! [wlroots portal backend](https://github.com/emersion/xdg-desktop-portal-wlr) does not implement the
 //! D-Bus API that RFD requires (it does not interfere with the other portal implementations;
 //! they can all be installed simultaneously).
 //!
-//! The XDG Desktop Portal has no API for message dialogs, so the [MessageDialog] and
-//! [AsyncMessageDialog] structs will not build with this backend.
+//! [Zenity](https://gitlab.gnome.org/GNOME/zenity) is also required to display message dialogs,
+//! and is used for file dialogs if xdg portal fails.
+//!
+//! If you are packaging an application that uses RFD, ensure that both a supported portal backend and
+//! Zenity are installed with the package.
 //!
 //! # macOS non-windowed applications, async, and threading
 //!
@@ -100,7 +106,7 @@
 //!
 //! | API Stability |
 //! | ------------- |
-//! | 🚧             |
+//! | 🚧            |
 //!
 //! | Feature      | Linux | Windows | MacOS     | Wasm32 |
 //! | ------------ | ----- | ------- | --------- | ------ |
@@ -108,8 +114,7 @@
 //! | MultipleFile | ✔     | ✔       | ✔         | ✔      |
 //! | PickFolder   | ✔     | ✔       | ✔         | ✖      |
 //! | SaveFile     | ✔     | ✔       | ✔         | ✖      |
-//! |              |       |         |           |        |
-//! | Filters      | ✔ ([GTK only](https://github.com/PolyMeilex/rfd/issues/42)) | ✔ | ✔ | ✔ |
+//! | Filters      | ✔     | ✔       | ✔         | ✔      |
 //! | StartingPath | ✔     | ✔       | ✔         | ✖      |
 //! | Async        | ✔     | ✔       | ✔         | ✔      |
 //!
@@ -119,7 +124,7 @@
 //!
 //! | Feature       | Linux        | Windows | MacOS | Wasm32 |
 //! | ------------- | -----        | ------- | ----- | ------ |
-//! | MessageDialog | ✔ (GTK only) | ✔       | ✔     | ✔      |
+//! | MessageDialog | ✔            | ✔       | ✔     | ✔      |
 //! | PromptDialog  |              |         |       |        |
 //! | ColorPicker   |              |         |       |        |
 
@@ -129,10 +134,9 @@ mod file_handle;
 pub use file_handle::FileHandle;
 
 mod file_dialog;
-#[cfg(target_os = "macos")]
 mod oneshot;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub use file_dialog::FileDialog;
 
 pub use file_dialog::AsyncFileDialog;
