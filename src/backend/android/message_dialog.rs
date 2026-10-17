@@ -1,5 +1,8 @@
 use super::jni_future::JniFuture;
-use super::utils::{buttons_to_spec, call_show_message, register_message_request, with_jni_helper};
+use super::utils::{
+    buttons_to_spec, call_show_message, complete_message_request, register_message_request,
+    with_jni_helper, RESULT_CANCEL,
+};
 use crate::backend::DialogFutureType;
 use crate::message_dialog::{MessageDialog, MessageDialogResult};
 
@@ -7,7 +10,7 @@ use crate::backend::AsyncMessageDialogImpl;
 impl AsyncMessageDialogImpl for MessageDialog {
     fn show_async(self) -> DialogFutureType<MessageDialogResult> {
         let (future, state) = JniFuture::new();
-        let request_id = register_message_request(state.clone(), self.buttons.clone());
+        let request_id = register_message_request(state, self.buttons.clone());
         let launched = with_jni_helper(false, |env, helper| {
             let button_spec = buttons_to_spec(&self.buttons);
             call_show_message(
@@ -21,7 +24,7 @@ impl AsyncMessageDialogImpl for MessageDialog {
             Ok(true)
         });
         if !launched {
-            state.lock().unwrap().complete(MessageDialogResult::Cancel);
+            complete_message_request(request_id, RESULT_CANCEL);
         }
         Box::pin(future)
     }

@@ -3,9 +3,10 @@ mod jni_future;
 mod message_dialog;
 mod utils;
 
-use jni::objects::{JClass, JObjectArray};
-use jni::sys::jlong;
-use jni::JNIEnv;
+use jni::errors::{LogErrorAndDefault, Result};
+use jni::objects::{JClass, JObjectArray, JString};
+use jni::sys::{jint, jlong};
+use jni::EnvUnowned;
 use std::path::PathBuf;
 
 use utils::{
@@ -15,61 +16,83 @@ use utils::{
 pub use utils::sync_save_file;
 
 #[no_mangle]
-pub extern "system" fn Java_rfd_RfdHelper_nativeInit(mut env: JNIEnv, _class: JClass) {
-    init_helper_class(&mut env);
+pub extern "system" fn Java_rfd_RfdHelper_nativeInit<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    class: JClass<'local>,
+) {
+    unowned_env
+        .with_env(|env| init_helper_class(env, &class))
+        .resolve::<LogErrorAndDefault>();
 }
 
 #[no_mangle]
-pub extern "system" fn Java_rfd_RfdHelper_nativeOnFilesSelected(
-    mut env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_rfd_RfdHelper_nativeOnFilesSelected<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: JClass<'local>,
     request_id: jlong,
-    paths: JObjectArray,
+    paths: JObjectArray<'local, JString<'local>>,
 ) {
-    let request_id = request_id as u64;
-    let result = if paths.is_null() {
-        None
-    } else {
-        jstring_array_to_paths(&mut env, &paths)
-    };
-    complete_file_request(request_id, result);
+    unowned_env
+        .with_env(|env| -> Result<()> {
+            let result = if paths.is_null() {
+                Ok(None)
+            } else {
+                jstring_array_to_paths(env, &paths)
+            };
+            result
+                .inspect_err(|_| complete_file_request(request_id as u64, None))
+                .map(|paths| complete_file_request(request_id as u64, paths))
+        })
+        .resolve::<LogErrorAndDefault>();
 }
 
 #[no_mangle]
-pub extern "system" fn Java_rfd_RfdHelper_nativeOnCancelled(
-    _env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_rfd_RfdHelper_nativeOnCancelled<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: JClass<'local>,
     request_id: jlong,
 ) {
-    let request_id = request_id as u64;
-    complete_file_request(request_id, None);
+    unowned_env
+        .with_env(|_| -> Result<()> {
+            complete_file_request(request_id as u64, None);
+            Ok(())
+        })
+        .resolve::<LogErrorAndDefault>();
 }
 
 #[no_mangle]
-pub extern "system" fn Java_rfd_RfdHelper_nativeOnMessageResult(
-    _env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_rfd_RfdHelper_nativeOnMessageResult<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: JClass<'local>,
     request_id: jlong,
-    result_code: jni::sys::jint,
+    result_code: jint,
 ) {
-    let request_id = request_id as u64;
-    complete_message_request(request_id, result_code);
+    unowned_env
+        .with_env(|_| -> Result<()> {
+            complete_message_request(request_id as u64, result_code);
+            Ok(())
+        })
+        .resolve::<LogErrorAndDefault>();
 }
 
 #[no_mangle]
-pub extern "system" fn Java_rfd_RfdHelper_nativeOnSaveFileSelected(
-    mut env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_rfd_RfdHelper_nativeOnSaveFileSelected<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: JClass<'local>,
     request_id: jlong,
-    path: jni::objects::JString,
+    path: JString<'local>,
 ) {
-    let request_id = request_id as u64;
-    let result = if path.is_null() {
-        None
-    } else if let Ok(s) = env.get_string(&path) {
-        s.to_str().ok().map(|p| vec![PathBuf::from(p)])
-    } else {
-        None
-    };
-    complete_file_request(request_id, result);
+    unowned_env
+        .with_env(|env| -> Result<()> {
+            let result = if path.is_null() {
+                Ok(None)
+            } else {
+                path.try_to_string(env)
+                    .map(|path| Some(vec![PathBuf::from(path)]))
+            };
+            result
+                .inspect_err(|_| complete_file_request(request_id as u64, None))
+                .map(|paths| complete_file_request(request_id as u64, paths))
+        })
+        .resolve::<LogErrorAndDefault>();
 }

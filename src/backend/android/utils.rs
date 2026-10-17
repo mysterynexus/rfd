@@ -1,49 +1,48 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use jni::objects::{GlobalRef, JClass, JObject, JObjectArray, JString, JValue};
+use jni::objects::{JClass, JObject, JObjectArray, JString};
+use jni::refs::{Global, IntoAuto};
 use jni::sys::jlong;
-use jni::{JNIEnv, JavaVM};
+use jni::{jni_sig, jni_str, Env, JValue, JavaVM};
 
 use super::jni_future::JniFutureState;
 use crate::message_dialog::{MessageButtons, MessageDialogResult};
 use crate::FileDialog;
 
-static HELPER_CLASS: OnceLock<GlobalRef> = OnceLock::new();
-static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static HELPER_CLASS: OnceLock<Global<JClass<'static>>> = OnceLock::new();
 
-pub fn init_helper_class(env: &mut JNIEnv) {
-    if INITIALIZED.load(Ordering::SeqCst) {
-        return;
+pub fn init_helper_class(env: &Env, class: &JClass) -> jni::errors::Result<()> {
+    if HELPER_CLASS.get().is_none() {
+        let _ = HELPER_CLASS.set(env.new_global_ref(class)?);
     }
-    if let Ok(class) = env.find_class("rfd/RfdHelper") {
-        if let Ok(global) = env.new_global_ref(&class) {
-            let _ = HELPER_CLASS.set(global);
-            INITIALIZED.store(true, Ordering::SeqCst);
-        }
-    }
+    Ok(())
 }
 
 pub fn get_vm() -> Option<JavaVM> {
     let ctx = ndk_context::android_context();
-    let vm_ptr = ctx.vm().cast();
-    unsafe { JavaVM::from_raw(vm_ptr) }.ok()
+    let vm_ptr = ctx.vm().cast::<jni::sys::JavaVM>();
+    if vm_ptr.is_null() {
+        return None;
+    }
+    Some(unsafe { JavaVM::from_raw(vm_ptr) })
 }
 
 pub fn with_jni_helper<F, T>(default: T, f: F) -> T
 where
-    F: FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>,
+    F: FnOnce(&mut Env, &JObject) -> jni::errors::Result<T>,
 {
     let Some(vm) = get_vm() else { return default };
-    let Ok(mut env) = vm.attach_current_thread() else {
-        return default;
-    };
-    let Ok(helper) = get_rfd_helper(&mut env) else {
-        return default;
-    };
-    f(&mut env, &helper).unwrap_or(default)
+    let result = vm.attach_current_thread_for_scope(|env| {
+        let helper = get_rfd_helper(env)?;
+        f(env, &helper)
+    });
+    result.unwrap_or_else(|error| {
+        log::error!("Android dialog failed: {error}");
+        default
+    })
 }
 
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -100,7 +99,7 @@ pub fn complete_message_request(request_id: u64, result_code: i32) {
 }
 
 const RESULT_OK: i32 = 0;
-const RESULT_CANCEL: i32 = 1;
+pub const RESULT_CANCEL: i32 = 1;
 const RESULT_YES: i32 = 2;
 const RESULT_NO: i32 = 3;
 const RESULT_CUSTOM_BASE: i32 = 100;
@@ -235,47 +234,46 @@ pub fn get_first_mime_type(dialog: &FileDialog) -> String {
 }
 
 pub fn call_pick_file(
-    env: &mut JNIEnv,
+    env: &mut Env,
     helper: &JObject,
     request_id: u64,
     mime_types: &[String],
     multiple: bool,
 ) -> Result<(), jni::errors::Error> {
-    let string_class = env.find_class("java/lang/String")?;
-    let arr = env.new_object_array(mime_types.len() as i32, &string_class, JObject::null())?;
-    for (i, mime) in mime_types.iter().enumerate() {
-        let jstr = env.new_string(mime)?;
-        env.set_object_array_element(&arr, i as i32, &jstr)?;
+    let array = JObjectArray::<JString>::new(env, mime_types.len(), JString::null())?;
+    for (index, mime) in mime_types.iter().enumerate() {
+        let java_string = env.new_string(mime)?.auto();
+        array.set_element(env, index, &java_string)?;
     }
     env.call_method(
         helper,
-        "pickFile",
-        "(J[Ljava/lang/String;Z)V",
+        jni_str!("pickFile"),
+        jni_sig!("(J[Ljava/lang/String;Z)V"),
         &[
             JValue::Long(request_id as jlong),
-            JValue::Object(&arr),
-            JValue::Bool(u8::from(multiple)),
+            JValue::Object(&array),
+            JValue::Bool(multiple),
         ],
     )?;
     Ok(())
 }
 
 pub fn call_pick_folder(
-    env: &mut JNIEnv,
+    env: &mut Env,
     helper: &JObject,
     request_id: u64,
 ) -> Result<(), jni::errors::Error> {
     env.call_method(
         helper,
-        "pickFolder",
-        "(J)V",
+        jni_str!("pickFolder"),
+        jni_sig!("(J)V"),
         &[JValue::Long(request_id as jlong)],
     )?;
     Ok(())
 }
 
 pub fn call_save_file(
-    env: &mut JNIEnv,
+    env: &mut Env,
     helper: &JObject,
     request_id: u64,
     mime_type: &str,
@@ -285,8 +283,8 @@ pub fn call_save_file(
     let name = env.new_string(file_name)?;
     env.call_method(
         helper,
-        "saveFile",
-        "(JLjava/lang/String;Ljava/lang/String;)V",
+        jni_str!("saveFile"),
+        jni_sig!("(JLjava/lang/String;Ljava/lang/String;)V"),
         &[
             JValue::Long(request_id as jlong),
             JValue::Object(&mime),
@@ -297,33 +295,32 @@ pub fn call_save_file(
 }
 
 pub fn call_show_message(
-    env: &mut JNIEnv,
+    env: &mut Env,
     helper: &JObject,
     request_id: u64,
     title: &str,
     message: &str,
     buttons: &[(&str, i32)],
 ) -> Result<(), jni::errors::Error> {
-    let jtitle = env.new_string(title)?;
-    let jmessage = env.new_string(message)?;
-    let string_class = env.find_class("java/lang/String")?;
-    let labels = env.new_object_array(buttons.len() as i32, &string_class, JObject::null())?;
-    let results = env.new_int_array(buttons.len() as i32)?;
+    let java_title = env.new_string(title)?;
+    let java_message = env.new_string(message)?;
+    let labels = JObjectArray::<JString>::new(env, buttons.len(), JString::null())?;
+    let results = env.new_int_array(buttons.len())?;
     let mut result_values: Vec<i32> = Vec::with_capacity(buttons.len());
-    for (i, (label, result)) in buttons.iter().enumerate() {
-        let jlabel = env.new_string(label)?;
-        env.set_object_array_element(&labels, i as i32, &jlabel)?;
+    for (index, (label, result)) in buttons.iter().enumerate() {
+        let java_label = env.new_string(label)?.auto();
+        labels.set_element(env, index, &java_label)?;
         result_values.push(*result);
     }
-    env.set_int_array_region(&results, 0, &result_values)?;
+    results.set_region(env, 0, &result_values)?;
     env.call_method(
         helper,
-        "showMessageDialog",
-        "(JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[I)V",
+        jni_str!("showMessageDialog"),
+        jni_sig!("(JLjava/lang/String;Ljava/lang/String;[Ljava/lang/String;[I)V"),
         &[
             JValue::Long(request_id as jlong),
-            JValue::Object(&jtitle),
-            JValue::Object(&jmessage),
+            JValue::Object(&java_title),
+            JValue::Object(&java_message),
             JValue::Object(&labels),
             JValue::Object(&results),
         ],
@@ -331,53 +328,52 @@ pub fn call_show_message(
     Ok(())
 }
 
-pub fn get_rfd_helper<'a>(env: &mut JNIEnv<'a>) -> Result<JObject<'a>, jni::errors::Error> {
-    let helper_class_ref = HELPER_CLASS.get().ok_or(jni::errors::Error::NullPtr(
+pub fn get_rfd_helper<'local>(env: &mut Env<'local>) -> jni::errors::Result<JObject<'local>> {
+    let helper_class = HELPER_CLASS.get().ok_or(jni::errors::Error::NullPtr(
         "RfdHelper class not initialized",
     ))?;
-    let helper_class = unsafe { JClass::from_raw(helper_class_ref.as_obj().as_raw()) };
-    let helper = env.call_static_method(helper_class, "getInstance", "()Lrfd/RfdHelper;", &[])?;
-    helper.l()
+    env.call_static_method(
+        helper_class,
+        jni_str!("getInstance"),
+        jni_sig!("()Lrfd/RfdHelper;"),
+        &[],
+    )?
+    .into_object()
 }
 
-pub fn jstring_array_to_paths(env: &mut JNIEnv, arr: &JObjectArray) -> Option<Vec<PathBuf>> {
-    let len = env.get_array_length(arr).ok()?;
-    if len == 0 {
-        return None;
+pub fn jstring_array_to_paths(
+    env: &mut Env,
+    array: &JObjectArray<JString>,
+) -> jni::errors::Result<Option<Vec<PathBuf>>> {
+    let length = array.len(env)?;
+    if length == 0 {
+        return Ok(None);
     }
-    let mut paths = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        if let Ok(obj) = env.get_object_array_element(arr, i) {
-            let jstr = JString::from(obj);
-            let s: String = env.get_string(&jstr).ok()?.into();
-            paths.push(PathBuf::from(s));
-        }
+    let mut paths = Vec::with_capacity(length);
+    for index in 0..length {
+        let java_string = array.get_element(env, index)?.auto();
+        paths.push(PathBuf::from(java_string.try_to_string(env)?));
     }
-    if paths.is_empty() {
-        None
-    } else {
-        Some(paths)
-    }
+    Ok(Some(paths))
 }
 
 pub fn sync_save_file(path: &std::path::Path) -> bool {
     let Some(vm) = get_vm() else { return false };
-    let Ok(mut env) = vm.attach_current_thread() else {
+    let Some(helper_class) = HELPER_CLASS.get() else {
         return false;
     };
-    let Some(helper_class_ref) = HELPER_CLASS.get() else {
-        return false;
-    };
-    let helper_class = unsafe { JClass::from_raw(helper_class_ref.as_obj().as_raw()) };
-    let path_str = path.to_string_lossy();
-    let Ok(jpath) = env.new_string(path_str.as_ref()) else {
-        return false;
-    };
-    let result = env.call_static_method(
-        helper_class,
-        "syncSaveFile",
-        "(Ljava/lang/String;)Z",
-        &[JValue::Object(&jpath)],
-    );
-    result.ok().and_then(|v| v.z().ok()).unwrap_or(false)
+    vm.attach_current_thread_for_scope(|env| -> jni::errors::Result<bool> {
+        let java_path = env.new_string(path.to_string_lossy())?;
+        env.call_static_method(
+            helper_class,
+            jni_str!("syncSaveFile"),
+            jni_sig!("(Ljava/lang/String;)Z"),
+            &[JValue::Object(&java_path)],
+        )?
+        .into_bool()
+    })
+    .unwrap_or_else(|error| {
+        log::error!("Android file sync failed: {error}");
+        false
+    })
 }
